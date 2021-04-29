@@ -7,8 +7,11 @@ fig, ax = plt.subplots()
 fig2, ax2 = plt.subplots()
 fig3, ax3 = plt.subplots()
 
-fileroute = 'AxisA_02/'
-inputfiles = 10
+fileroute = r'Axis Anisotropy/AxisA_02/' # Top level file route
+
+# Ideally will add a way to loop through all directories within the top level directory.
+
+inputfiles = 10 # Number of files to average over
 
 systemAverages = pd.DataFrame()
 systemSusc = pd.DataFrame()
@@ -36,7 +39,7 @@ systemAverages2 = pd.DataFrame()
 systemSusc2 = pd.DataFrame()
 systemBinder2 = pd.DataFrame()
 
-for i in range(inputfiles -1):
+for i in range(inputfiles - 1):
 	inputTable = pd.read_csv(fileroute+'40x40_Data/40x40_spinDist_{}.csv'.format(i+1), sep='|', header=None, names='A')
 	inputTable = inputTable.A.str.split(',', expand=True)
 	inputTable = inputTable.fillna(value=np.nan)
