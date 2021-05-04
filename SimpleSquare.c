@@ -12,6 +12,13 @@
        __typeof__ (b) _b = (b); \
      _a > _b ? _a : _b; })
 
+/* Structure Definition */
+
+typedef struct {
+    int apos;
+    int bpos;
+}   NNvec_t;
+
 /* Global Variable Declaration */
 double anisotropyExchange = 0.;
 double anisotropyAxis = 0.;
@@ -37,13 +44,22 @@ double getRandom();
 double Hamiltonian(double *p0, double neighbours[nearestNeighbours][3]);
 double acceptanceRatio(double energy, double T);
 int acceptChange(double *p0, double *p0_new, double neighbours[nearestNeighbours][3], double Tk);
-int alterLattice(double lattice[initLatticeSize][initLatticeSize][3], double T);
-int warmup(double lattice[initLatticeSize][initLatticeSize][3], int maxSteps, double T);
+int alterLattice(double lattice[initLatticeSize][initLatticeSize][3], double T, NNvec_t set_of_NN[nearestNeighbours]);
+int warmup(double lattice[initLatticeSize][initLatticeSize][3], int maxSteps, double T, NNvec_t set_of_NN[nearestNeighbours]);
 double magneticMoment(double lattice[initLatticeSize][initLatticeSize][3]);
-int Metropolis(double lattice[initLatticeSize][initLatticeSize][3], int testSteps, double T, double *magSamples);
+int Metropolis(double lattice[initLatticeSize][initLatticeSize][3], int testSteps, double T, double *magSamples, NNvec_t set_of_NN[nearestNeighbours]);
 int updateSimStep(double T, double scale);
+int readFile(FILE *input_file, NNvec_t vectors[nearestNeighbours]);
 
 /* Function Description */
+
+int readFile(FILE *input_file, NNvec_t vectors[nearestNeighbours]){
+    // Read NN directions
+    size_t count = 0;
+    while(fscanf(input_file, "%d,%d", &vectors[count].apos, &vectors[count].bpos) == 2){
+        count++;
+    }
+}
 
 int updateSimStep(double T, double scale){
     /* Inputs T.
@@ -145,8 +161,8 @@ int acceptChange(double *p0, double *p0_new, double neighbours[nearestNeighbours
     }
 }
 
-int alterLattice(double lattice[initLatticeSize][initLatticeSize][3], double T){
-	int i, j, k;
+int alterLattice(double lattice[initLatticeSize][initLatticeSize][3], double T, NNvec_t set_of_NN[nearestNeighbours]){
+	int i, j, k, l;
     for(i = 0; i < initLatticeSize; i++){
         for(j = 0; j < initLatticeSize; j++){
             double neighbours[nearestNeighbours][3];
@@ -156,15 +172,31 @@ int alterLattice(double lattice[initLatticeSize][initLatticeSize][3], double T){
             p0 = malloc(3*sizeof(double));
             p0_new = malloc(3*sizeof(double));
 
+            int A, B;
+
             randomVec(p0_new);
 
             for(k = 0; k < 3; k++){
                 p0[k] = lattice[i][j][k];
-                neighbours[0][k] = (i==0) ? lattice[initLatticeSize-1][j][k] : lattice[i-1][j][k];
-                neighbours[1][k] = lattice[(i+1) % initLatticeSize][j][k];
-                neighbours[2][k] = (j==0) ? lattice[i][initLatticeSize - 1][k] : lattice[i][j-1][k];
-                neighbours[3][k] = lattice[i][(j+1) % initLatticeSize][k];
+            }
+            for(l = 0; l< nearestNeighbours; l++){
+                    /*
+                        There are four scenarios that need to be dealt with for boundary conditions:
+
+                        1. A >= 0 and B >= 0, this just needs modulo operator.
+                        2. A = -1 and i = 0, then we need set the array position to the last position on i axis
+                        3. B = -1 and j = 0, same issue.
+                        4. A and B = -1 and i and j = 0, combination of 2 and 3.
+
+                        There may be a way to combine scenarios 2-4 but currently not sure how to do that.
+                        Ideally, I would only do a quick check to see if i or j are 0 first, so that I do less if-else computations.
+                    */
+                    A = (i == 0 && set_of_NN[l].apos < 0) ? (initLatticeSize -1) : (i + set_of_NN[l].apos) % initLatticeSize;
+                    B = (j == 0 && set_of_NN[l].bpos < 0) ? (initLatticeSize -1) : (i + set_of_NN[l].bpos) % initLatticeSize;
+                for(k = 0; k < 3; k++){
+                    neighbours[l][k] = lattice[A][B][k];
                 }
+            }
 
             if(acceptChange(p0, p0_new, neighbours, T) == 1){
                 for(k = 0;k < 3; k++){
@@ -179,14 +211,14 @@ int alterLattice(double lattice[initLatticeSize][initLatticeSize][3], double T){
     }
 }
 
-int warmup(double lattice[initLatticeSize][initLatticeSize][3], int maxSteps, double T){
+int warmup(double lattice[initLatticeSize][initLatticeSize][3], int maxSteps, double T, NNvec_t set_of_NN[nearestNeighbours]){
 	int i;
     for(i = 0; i< maxSteps; i++){
-        alterLattice(lattice, T);
+        alterLattice(lattice, T, set_of_NN);
     }
 }
 
-int Metropolis(double lattice[initLatticeSize][initLatticeSize][3], int testSteps, double T, double *magSamples){
+int Metropolis(double lattice[initLatticeSize][initLatticeSize][3], int testSteps, double T, double *magSamples, NNvec_t set_of_NN[nearestNeighbours]){
     /*
         Loops through a set of simulation steps, altering the lattice when energy allows.
         It saves the average magnetisation of the lattice to output pointer array magSamples.
@@ -195,7 +227,7 @@ int Metropolis(double lattice[initLatticeSize][initLatticeSize][3], int testStep
 	int i;
 
     for(i = 0; i < testSteps; i++){
-        alterLattice(lattice, T);
+        alterLattice(lattice, T, set_of_NN);
         magSamples[i] = magneticMoment(lattice);
     }
 }
@@ -229,33 +261,46 @@ int main(int argc, char *argv[]){
 	opterr = 0;
 	int c;
 
-	char options[] = "N:U:L:i:a:e:T:";
+	char options[] = "N:U:L:i:a:e:T:s:";
 
 	while((c = getopt(argc, argv, options)) != -1){
         switch (c)
         {
         case 'N':
+            // Set Lattice Size
             initLatticeSize = atoi(optarg);
             break;
         case 'U':
+            // Set Upper Bound
             maxSimSteps = atoi(optarg);
             break;
         case 'L':
+            // Set Lower Bound
             minSimSteps = atoi(optarg);
             break;
         case 'i':
+            // Set iteration number
             simNumber = atoi(optarg);
             break;
         case 'a':
+            // Set axis anisotropy value
             anisotropyAxis = atof(optarg);
             break;
         case 'e':
+            // Set exchange anisotropy value
             anisotropyExchange = atof(optarg);
             break;
         case 'T':
+            // Set estimate of critcal temperature
             criticalEstimate = atof(optarg);
             break;
+        case 's':
+            // Set the symmetry of the system
+            // Required for non-square lattices
+            nearestNeighbours = atoi(optarg);
+            break;
         case '?':
+            // Exception handling
             if (strchr(options, optopt) != NULL){
                 printf("Option -%c requires an argument.\n", optopt);
             }
@@ -279,6 +324,16 @@ int main(int argc, char *argv[]){
     printf("Exchange Anisotropy Value: %f\n", anisotropyExchange);
     printf("Critical Estimate: %f\n", criticalEstimate);
 
+    // Declare input file that holds symmetry vectors.
+    // Will be a set of 4 tuples for square, 6 for triangular etc.
+    // Currently need to declare nearestNeighbours on command line.
+    FILE *input_fp;
+    input_fp = fopen("INPUTVECS", "r");
+
+    NNvec_t nearestNeighbourPos[nearestNeighbours];
+    readFile(input_fp, nearestNeighbourPos);
+
+    // Declare output csv file.
     FILE *fp;
 
     char filename[32];
@@ -306,7 +361,7 @@ int main(int argc, char *argv[]){
         }
     }
 
-    warmup(lattice, initWarmupSteps, startTemp);
+    warmup(lattice, initWarmupSteps, startTemp, nearestNeighbourPos);
 
     t = startTemp;
 
@@ -316,7 +371,7 @@ int main(int argc, char *argv[]){
     while(t < endTemp){
             double sampleMags[simSteps];
             memset(sampleMags, 0, simSteps*sizeof(double));
-            Metropolis(lattice, simSteps, t, sampleMags);
+            Metropolis(lattice, simSteps, t, sampleMags, nearestNeighbourPos);
             fprintf(fp, "%f", t);
             for(i = 0; i < simSteps; i++){
                 fprintf(fp, ", %f", sampleMags[i]);
