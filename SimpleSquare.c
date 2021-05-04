@@ -3,6 +3,7 @@
 #include <math.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 /* Defined Functions */
 
@@ -12,8 +13,8 @@
      _a > _b ? _a : _b; })
 
 /* Global Variable Declaration */
-int anisotropyExchange = 0;
-int anisotropyAxis = 0.8;
+double anisotropyExchange = 0.;
+double anisotropyAxis = 0.;
 
 int initLatticeSize;
 
@@ -26,7 +27,7 @@ double startTemp;
 double endTemp;
 double intervalTemp = 1.0005;
 
-
+int simNumber = 0;
 int nearestNeighbours = 4;
 
 /* Function Declaration */
@@ -190,7 +191,7 @@ int Metropolis(double lattice[initLatticeSize][initLatticeSize][3], int testStep
         Loops through a set of simulation steps, altering the lattice when energy allows.
         It saves the average magnetisation of the lattice to output pointer array magSamples.
     */
-	
+
 	int i;
 
     for(i = 0; i < testSteps; i++){
@@ -224,18 +225,59 @@ double magneticMoment(double lattice[initLatticeSize][initLatticeSize][3]){
 int main(int argc, char *argv[]){
     int i, j, k;
     double t;
-	int simNumber;
-    if(argc == 5){
-        initLatticeSize = atoi(argv[1]);
-        minSimSteps = atoi(argv[2]);
-        maxSimSteps = atoi(argv[3]);
-		simNumber = atoi(argv[4]);
-        printf("Initialised with Lattice Size: %d\n Minimum Simulation Steps: %d\n Maximum Simulation Steps: %d\n", initLatticeSize, minSimSteps, maxSimSteps);
-    }
-    else{
-        printf("Input Lattice Size, minSimSteps, maxSimsteps");
-        return 1;
-    }
+
+	opterr = 0;
+	int c;
+
+	char options[] = "N:U:L:i:a:e:T:";
+
+	while((c = getopt(argc, argv, options)) != -1){
+        switch (c)
+        {
+        case 'N':
+            initLatticeSize = atoi(optarg);
+            break;
+        case 'U':
+            maxSimSteps = atoi(optarg);
+            break;
+        case 'L':
+            minSimSteps = atoi(optarg);
+            break;
+        case 'i':
+            simNumber = atoi(optarg);
+            break;
+        case 'a':
+            anisotropyAxis = atof(optarg);
+            break;
+        case 'e':
+            anisotropyExchange = atof(optarg);
+            break;
+        case 'T':
+            criticalEstimate = atof(optarg);
+            break;
+        case '?':
+            if (strchr(options, optopt) != NULL){
+                printf("Option -%c requires an argument.\n", optopt);
+            }
+            else if (isprint(optopt)){
+                printf ("Unknown option `-%c'.\n", optopt);
+            }
+            else{
+                printf("Unknown option character `\\x%x'.\n", optopt);
+            }
+            return 1;
+        default:
+            abort();
+        }
+	}
+    // Print to console the initialised variables for future reference.
+    printf("Initialised with:\n");
+    printf("Lattice Size = %d\n", initLatticeSize);
+    printf("Maximum Simulation Steps = %d\n", maxSimSteps);
+    printf("Minimum Simulation Steps = %d\n", minSimSteps);
+    printf("Axis Anisotropy Value: %f\n", anisotropyAxis);
+    printf("Exchange Anisotropy Value: %f\n", anisotropyExchange);
+    printf("Critical Estimate: %f\n", criticalEstimate);
 
     FILE *fp;
 
@@ -263,14 +305,6 @@ int main(int argc, char *argv[]){
                 lattice[i][j][2] = 1;
         }
     }
-    /*
-    for(i=0; i < initLatticeSize; i++){
-        for(j=0; j < initLatticeSize; j++){
-            printf("%f \t", lattice[i][j][2]);
-        }
-        printf("\n");
-    }
-    */
 
     warmup(lattice, initWarmupSteps, startTemp);
 
@@ -294,6 +328,6 @@ int main(int argc, char *argv[]){
     }
     //free(lattice);
     fclose(fp);
-	
+
 	return 0;
 }
