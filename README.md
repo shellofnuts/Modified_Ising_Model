@@ -12,6 +12,15 @@ Current Command Line Tags for SimpleSquare.c
 -e : Set the Exchange Anisotropy value. Default is 0.0
 -i : Set the index for the output file. Needed creating multiple files. Default is 0.
 -T : Set the estimate for the critical temperature. This allows for more sampled steps around the high variance region. Default is 1.2.
+-s : Set Nearest Neighbours parameter. Default is 4.
+
+INPUTVECS
+Input file for SimpleSquare.c. This should list the nearest neighbours in terms of primitive vector coefficients around the centre point.
+Example for square would be:
+1,0
+-1,0
+0,1
+0,-1
 
 
 submit.sh
