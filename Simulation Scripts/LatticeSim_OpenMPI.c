@@ -2,8 +2,9 @@
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
-#include <time.h>
 #include <unistd.h>
+#include "mpi.h"
+#include <stddef.h>
 
 /* Defined Functions */
 
@@ -25,7 +26,7 @@ double anisotropyAxis = 0.;
 
 int initLatticeSize;
 
-int initWarmupSteps = 200;
+int initWarmupSteps = 500;
 int maxSimSteps = 1000;
 int minSimSteps = 300;
 
@@ -33,6 +34,7 @@ double criticalEstimate = 1.2;
 double startTemp;
 double endTemp;
 double intervalTemp = 1.0005;
+double start;
 
 int simNumber = 0;
 int nearestNeighbours = 4;
@@ -255,6 +257,17 @@ double magneticMoment(double lattice[initLatticeSize][initLatticeSize][3]){
 }
 
 int main(int argc, char *argv[]){
+    /*
+    The approach taken here is to multithread the temperature average section.
+    Each process will take a certain chunk of the temperature range and perform the calculations necessary.
+    This parallisation of the temperature sweep function should hopefully decrease sim times.
+    */
+
+    int myn, myrank, commsize;
+
+    MPI_Init(&argc, &argv);
+    MPI_Comm_size(MPI_COMM_WORLD, &commsize); MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+
     int i, j, k;
     double t;
 
@@ -270,35 +283,43 @@ int main(int argc, char *argv[]){
             // Set Lattice Size
             initLatticeSize = atoi(optarg);
             break;
+
         case 'U':
             // Set Upper Bound
             maxSimSteps = atoi(optarg);
             break;
+
         case 'L':
             // Set Lower Bound
             minSimSteps = atoi(optarg);
             break;
+
         case 'i':
             // Set iteration number
             simNumber = atoi(optarg);
             break;
+
         case 'a':
             // Set axis anisotropy value
             anisotropyAxis = atof(optarg);
             break;
+
         case 'e':
             // Set exchange anisotropy value
             anisotropyExchange = atof(optarg);
             break;
+
         case 'T':
             // Set estimate of critcal temperature
             criticalEstimate = atof(optarg);
             break;
+
         case 's':
             // Set the symmetry of the system
             // Required for non-square lattices
             nearestNeighbours = atoi(optarg);
             break;
+
         case '?':
             // Exception handling
             if (strchr(options, optopt) != NULL){
@@ -311,10 +332,12 @@ int main(int argc, char *argv[]){
                 printf("Unknown option character `\\x%x'.\n", optopt);
             }
             return 1;
+
         default:
             abort();
         }
 	}
+    if(myrank==0){
     // Print to console the initialised variables for future reference.
     printf("Initialised with:\n");
     printf("Lattice Size = %d\n", initLatticeSize);
@@ -323,33 +346,64 @@ int main(int argc, char *argv[]){
     printf("Axis Anisotropy Value: %f\n", anisotropyAxis);
     printf("Exchange Anisotropy Value: %f\n", anisotropyExchange);
     printf("Critical Estimate: %f\n", criticalEstimate);
+    }
 
-    // Declare input file that holds symmetry vectors.
-    // Will be a set of 4 tuples for square, 6 for triangular etc.
-    // Currently need to declare nearestNeighbours on command line.
-    FILE *input_fp;
-    input_fp = fopen("INPUTVECS", "r");
-
+    // Declare NN before reading file.
     NNvec_t nearestNeighbourPos[nearestNeighbours];
-    readFile(input_fp, nearestNeighbourPos);
+
+    /*
+    Declare input file that holds symmetry vectors.
+    Will be a set of 4 tuples for square, 6 for triangular etc.
+    Currently need to declare nearestNeighbours on command line.
+    Main process will read the file and then broadcast the data to all the rest of the process.
+    */
+    if(myrank==0){
+        FILE *input_fp;
+        input_fp = fopen("INPUTVECS", "r");
+        readFile(input_fp, nearestNeighbourPos);
+        fclose(input_fp);
+    }
+    /*
+        Set up the MPI_Datatype struct to be able to distribute the struct data to all nodes.
+    */
+
+	int elements = 2;
+	int array_of_blocklengths[] = {1, 1};
+	MPI_Datatype array_of_types[] = {MPI_INT, MPI_INT};
+	MPI_Aint array_of_displacements[] = { offsetof(NNvec_t, apos), offsetof(NNvec_t, bpos)};
+	MPI_Datatype tmp_type, my_mpi_struct_type;
+	MPI_Aint lb, extent;
+
+	MPI_Type_create_struct(elements, array_of_blocklengths, array_of_displacements, array_of_types, &tmp_type);
+	MPI_Type_get_extent(tmp_type, &lb, &extent);
+	MPI_Type_create_resized(tmp_type, lb, extent, &my_mpi_struct_type);
+	MPI_Type_commit(&my_mpi_struct_type);
+
+	// Broadcast the data from process 0 to all other processes
+    MPI_Bcast(nearestNeighbourPos, nearestNeighbours, my_mpi_struct_type, 0, MPI_COMM_WORLD);
 
     // Declare output csv file.
     FILE *fp;
 
     char filename[32];
-    sprintf(filename, "%dx%d_spinDist_%d.csv", initLatticeSize, initLatticeSize, simNumber);
+
+    /*
+        Set the output name here for each individual process.
+        Will use process 0 to colate files into one file.
+    */
+    sprintf(filename, "%dx%d_spinDist_%d_%d.csv", initLatticeSize, initLatticeSize, simNumber, myrank);
 
     fp = fopen(filename, "w+");
 
-	// Update Global Variables
-	startTemp = criticalEstimate - 0.15;
-	endTemp = criticalEstimate + 0.15;
+	// Update Global Variables according to process.
+	double span = 0.3 / commsize;
+	startTemp = criticalEstimate - 0.15 + myrank*span;
+	endTemp = startTemp + span;
 
 	// Set a random seed for random numbers
 	srand(time(NULL));
 
     // Initialise the Lattice
-
     double lattice[initLatticeSize][initLatticeSize][3];
     memset(lattice, 0, initLatticeSize*initLatticeSize*sizeof(double));
 
@@ -361,12 +415,21 @@ int main(int argc, char *argv[]){
         }
     }
 
+    // "Warmup" the lattice.
     warmup(lattice, initWarmupSteps, startTemp, nearestNeighbourPos);
 
     t = startTemp;
 
-    int simSteps = minSimSteps;
-    double scale = max((criticalEstimate - startTemp), (endTemp - criticalEstimate));
+    // NOTE: Depreciating updateSimSteps func at the moment. Setting simsteps to Upper Bound (-U)
+
+    int simSteps = maxSimSteps;
+    //int simSteps = minSimSteps;
+    //double scale = max((criticalEstimate - startTemp), (endTemp - criticalEstimate));
+
+    MPI_Barrier(MPI_COMM_WORLD);
+    if(myrank==0){
+        start = MPI_Wtime();
+    }
 
     while(t < endTemp){
             double sampleMags[simSteps];
@@ -378,11 +441,29 @@ int main(int argc, char *argv[]){
             }
             fprintf(fp, "\n");
             t *= intervalTemp;
-            simSteps = updateSimStep(t, scale);
-            //free(sampleMags);
+            //simSteps = updateSimStep(t, scale);
     }
-    //free(lattice);
     fclose(fp);
+
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    if(myrank==0){
+        printf("Time: %f\n", MPI_Wtime() - start);
+        /*
+        FILE *output_fp;
+        char fileout[32];
+        sprintf(fileout, "%dx%d_spinDist_%d.csv", initLatticeSize, initLatticeSize, simNumber);
+
+        output_fp = fopen(filename, "w+");
+
+        char buff[1024];
+        for(i=0; i<commsize; i++){
+
+        }
+
+        */
+    }
+    MPI_Finalize();
 
 	return 0;
 }
