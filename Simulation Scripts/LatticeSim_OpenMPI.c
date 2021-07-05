@@ -6,7 +6,7 @@
 #include "mpi.h"
 #include <stddef.h>
 
-/* Defined Functions */
+/* Defined Macros */
 
 #define max(a,b) \
    ({ __typeof__ (a) _a = (a); \
@@ -18,34 +18,55 @@
 typedef struct {
     int apos;
     int bpos;
+    int FM_type;
 }   NNvec_t;
 
-/* Global Variable Declaration */
-double anisotropyExchange = 0.;
-double anisotropyAxis = 0.;
+/*
+*   Struct stores information on direction of nearest neighbour
+*   and the type of bond interaction (FM: +1, AFM: -1).
+*   This is distributed in MPI_Bcast in main().
+*
+*   Used in readFile(), alterLattice(), Warmup() & Metropolis().
+*/
 
-int initLatticeSize;
+/* Global Variable Declaration */
+
+double anisotropyExchange = 0.;         // Default values for magnetic anisotropy.
+double anisotropyAxis = 0.;             // Values are altered by command line arguments.
+
+int initLatticeSize;                    // No default value, must specify in CMD line args.
 
 int initWarmupSteps = 500;
 int maxSimSteps = 1000;
 int minSimSteps = 300;
 
-double criticalEstimate = 1.2;
-double startTemp;
+double criticalEstimate = 101.0;        // Estimate for Tc. Centres the temperature range search.
+
+double startTemp;                       // Local variables for each MPI node.
 double endTemp;
-double intervalTemp = 1.0005;
+
+double intervalTemp = 5.0;
 double start;
+
+double rangeTemp = 200.0;
 
 int simNumber = 0;
 int nearestNeighbours = 4;
 
+/* Constants */
+
+const double boltzmann = 8.6173E-5; 	// Boltzmann Constant in eV
+const double J_bond = 0.86E-3; 			// J interaction energy in eV
+const double uB_moment = 3.0;			// Intrinsic Lattice Moment
+
 /* Function Declaration */
+
 double gaussianRand();
 int randomVec(double *output_vec);
 double getRandom();
-double Hamiltonian(double *p0, double neighbours[nearestNeighbours][3]);
+double Hamiltonian( double *p0, double neighbours[nearestNeighbours][3], int FM_type[nearestNeighbours]);
 double acceptanceRatio(double energy, double T);
-int acceptChange(double *p0, double *p0_new, double neighbours[nearestNeighbours][3], double Tk);
+int acceptChange(double *p0, double *p0_new, double neighbours[nearestNeighbours][3], int FM_type[nearestNeighbours], double Tk);
 int alterLattice(double lattice[initLatticeSize][initLatticeSize][3], double T, NNvec_t set_of_NN[nearestNeighbours]);
 int warmup(double lattice[initLatticeSize][initLatticeSize][3], int maxSteps, double T, NNvec_t set_of_NN[nearestNeighbours]);
 double magneticMoment(double lattice[initLatticeSize][initLatticeSize][3]);
@@ -56,9 +77,12 @@ int readFile(FILE *input_file, NNvec_t vectors[nearestNeighbours]);
 /* Function Description */
 
 int readFile(FILE *input_file, NNvec_t vectors[nearestNeighbours]){
-    // Read NN directions
+    // Reads INPUTVEC file.
+    // Extracts the nearest neighbour directions and the magnetic
+    // interaction type of each NN interaction.
+
     size_t count = 0;
-    while(fscanf(input_file, "%d,%d", &vectors[count].apos, &vectors[count].bpos) == 2){
+    while(fscanf(input_file, "%d,%d,&d", &vectors[count].apos, &vectors[count].bpos, &vectors[count].FM_type) == 3){
         count++;
     }
 }
@@ -66,8 +90,8 @@ int readFile(FILE *input_file, NNvec_t vectors[nearestNeighbours]){
 int updateSimStep(double T, double scale){
     /* Inputs T.
        Returns the number of simsteps associated with that T.
-       This is calculated by scaling the simsteps to a x^2 centred on criticalEstimate */
-
+       This is calculated by scaling the simsteps to a x^2 centred on criticalEstimate.
+    */
     double steps = maxSimSteps - (maxSimSteps-minSimSteps)*((T-criticalEstimate)*(T-criticalEstimate)/(scale*scale));
     int result = (int) steps;
     //printf("%f, %d\n", steps, result);
@@ -92,7 +116,7 @@ int randomVec(double *output_vec){
     }
     double vec_norm = sqrt(vec_sum);
     for(i=0;i<3;i++){
-        output_vec[i] = new_vec[i]/vec_norm;
+        output_vec[i] = uB_moment * new_vec[i] / vec_norm;
     }
 }
 
@@ -116,31 +140,35 @@ double gaussianRand(){
     return x*f;
 }
 
-double Hamiltonian(double *p0, double neighbours[nearestNeighbours][3]){
+double Hamiltonian( double *p0, double neighbours[nearestNeighbours][3], int FM_type[nearestNeighbours]){
     /*
-        Inputs pointers to point of interest and an array of NearestNeighbours
+        Inputs pointers to spin, array of NearestNeighbours and interaction type.
         Calculates and returns energy associated.
     */
 
-    double energy = 0;
+    double energy = 0.0;
 	int i;
 
     // Sum the altered dot product
     for(i=0; i<nearestNeighbours;i++){
-        energy += -1*((1-anisotropyExchange)*(p0[0]*neighbours[i][0] + p0[1]*neighbours[i][1]) + p0[2]*neighbours[i][2]);
+        energy += FM_type[i] * ((1 - anisotropyExchange)*(p0[0]*neighbours[i][0] + p0[1]*neighbours[i][1]) + p0[2]*neighbours[i][2]);
     }
+
+	energy *= -1 * J_bond;
+
     // Add the easy axis anisotropy
-    energy += -2*anisotropyAxis*(p0[2]*p0[2]);
+    energy += -1 * anisotropyAxis * ( p0[2] * p0[2] );
     return energy;
 }
 
 double acceptanceRatio(double energy, double T){
-    return exp(-1*energy/T);
+	double Tk = boltzmann * T;		// Convert T to "real" temperature instead of normalised T (T/kb).
+    return exp(-1 * energy / Tk);
 }
 
-int acceptChange(double *p0, double *p0_new, double neighbours[nearestNeighbours][3], double Tk){
-    double originalE = Hamiltonian(p0, neighbours);
-    double newE = Hamiltonian(p0_new, neighbours);
+int acceptChange(double *p0, double *p0_new, double neighbours[nearestNeighbours][3], int FM_type[nearestNeighbours], double Tk){
+    double originalE = Hamiltonian(p0, neighbours, FM_type);
+    double newE = Hamiltonian(p0_new, neighbours, FM_type);
 
     double deltaE = newE - originalE;
     /*
@@ -152,10 +180,10 @@ int acceptChange(double *p0, double *p0_new, double neighbours[nearestNeighbours
     We only need to check the first two cases as they are the only ones that make a change.
     */
 
-    if(deltaE < 0){
+    if(deltaE <= 0){
         return 1;
     }
-    else if(getRandom() < acceptanceRatio(deltaE, Tk)){
+    else if(getRandom() <= acceptanceRatio(deltaE, Tk)){
         return 1;
     }
     else{
@@ -169,10 +197,12 @@ int alterLattice(double lattice[initLatticeSize][initLatticeSize][3], double T, 
         for(j = 0; j < initLatticeSize; j++){
             double neighbours[nearestNeighbours][3];
             double *p0, *p0_new;
+            int *FM_type;
 
             memset(neighbours, 0, nearestNeighbours*3*sizeof(double));
             p0 = malloc(3*sizeof(double));
             p0_new = malloc(3*sizeof(double));
+            FM_type = malloc(nearestNeighbours*sizeof(int));
 
             int A, B;
 
@@ -183,24 +213,29 @@ int alterLattice(double lattice[initLatticeSize][initLatticeSize][3], double T, 
             }
             for(l = 0; l< nearestNeighbours; l++){
                     /*
-                        There are four scenarios that need to be dealt with for boundary conditions:
+                     *   There are four scenarios that need to be dealt with for boundary conditions:
+                     *
+                     *  1. A >= 0 and B >= 0, this just needs modulo operator.
+                     *  2. A = -1 and i = 0, then we need set the array position to the last position on i axis
+                     *  3. B = -1 and j = 0, same issue.
+                     *  4. A and B = -1 and i and j = 0, combination of 2 and 3.
+                     *
+                     *  There may be a way to combine scenarios 2-4 but currently not sure how to do that.
+                     *  Ideally, I would only do a quick check to see if i or j are 0 first, so that I do less if-else computations.
 
-                        1. A >= 0 and B >= 0, this just needs modulo operator.
-                        2. A = -1 and i = 0, then we need set the array position to the last position on i axis
-                        3. B = -1 and j = 0, same issue.
-                        4. A and B = -1 and i and j = 0, combination of 2 and 3.
-
-                        There may be a way to combine scenarios 2-4 but currently not sure how to do that.
-                        Ideally, I would only do a quick check to see if i or j are 0 first, so that I do less if-else computations.
-                    */
-                    A = (i == 0 && set_of_NN[l].apos < 0) ? (initLatticeSize -1) : (i + set_of_NN[l].apos) % initLatticeSize;
-                    B = (j == 0 && set_of_NN[l].bpos < 0) ? (initLatticeSize -1) : (i + set_of_NN[l].bpos) % initLatticeSize;
+                     *  Unpack the
+                     */
+                A = (i == 0 && set_of_NN[l].apos < 0) ? (initLatticeSize -1) : (i + set_of_NN[l].apos) % initLatticeSize;
+                B = (j == 0 && set_of_NN[l].bpos < 0) ? (initLatticeSize -1) : (i + set_of_NN[l].bpos) % initLatticeSize;
                 for(k = 0; k < 3; k++){
                     neighbours[l][k] = lattice[A][B][k];
                 }
+
+                FM_type[l] = set_of_NN[l].FM_type;
+
             }
 
-            if(acceptChange(p0, p0_new, neighbours, T) == 1){
+            if(acceptChange(p0, p0_new, neighbours, FM_type, T) == 1){
                 for(k = 0;k < 3; k++){
                     lattice[i][j][k] = p0_new[k];
                 }
@@ -273,8 +308,11 @@ int main(int argc, char *argv[]){
 
 	opterr = 0;
 	int c;
-
-	char options[] = "N:U:L:i:a:e:T:s:";
+    /*
+        Implement command line arguments using getopt().
+        char options[] stores the command line letter. ":" denotes that a value after the letter is required.
+    */
+	char options[] = "N:U:L:i:a:e:T:s:r:";
 
 	while((c = getopt(argc, argv, options)) != -1){
         switch (c)
@@ -320,6 +358,11 @@ int main(int argc, char *argv[]){
             nearestNeighbours = atoi(optarg);
             break;
 
+		case 'r':
+			// Set the Temperature range of the system.
+			rangeTemp = atof(optarg);
+			break;
+
         case '?':
             // Exception handling
             if (strchr(options, optopt) != NULL){
@@ -338,15 +381,20 @@ int main(int argc, char *argv[]){
         }
 	}
     if(myrank==0){
-    // Print to console the initialised variables for future reference.
-    printf("Initialised with:\n");
-    printf("Lattice Size = %d\n", initLatticeSize);
-    printf("Maximum Simulation Steps = %d\n", maxSimSteps);
-    printf("Minimum Simulation Steps = %d\n", minSimSteps);
-    printf("Axis Anisotropy Value: %f\n", anisotropyAxis);
-    printf("Exchange Anisotropy Value: %f\n", anisotropyExchange);
-    printf("Critical Estimate: %f\n", criticalEstimate);
+        // Print to console the initialised variables for future reference.
+        printf("Initialised with:\n");
+        printf("Lattice Size = %d\n", initLatticeSize);
+        printf("Maximum Simulation Steps = %d\n", maxSimSteps);
+        printf("Minimum Simulation Steps = %d\n", minSimSteps);
+        printf("Axis Anisotropy Value: %f\n", anisotropyAxis);
+        printf("Exchange Anisotropy Value: %f\n", anisotropyExchange);
+		printf("Magnetic Interaction Energy: %f\n \n", J_bond);
+        printf("Critical Estimate: %f\n", criticalEstimate);
+		printf("Temperature Range: %f\n", rangeTemp);
     }
+
+	// Set a random seed for random numbers
+	srand(time(NULL));
 
     // Declare NN before reading file.
     NNvec_t nearestNeighbourPos[nearestNeighbours];
@@ -362,15 +410,20 @@ int main(int argc, char *argv[]){
         input_fp = fopen("INPUTVECS", "r");
         readFile(input_fp, nearestNeighbourPos);
         fclose(input_fp);
+        printf("Distributing NNpos...\n");
     }
+
     /*
-        Set up the MPI_Datatype struct to be able to distribute the struct data to all nodes.
+     *  Set up the MPI_Datatype struct to be able to distribute the struct data to all nodes.
+     *  We need to define the number of elements per message, type of elements and their memory offsets.
+     *  We create a temporary type and then calculate the excess memory used in each memory.
+     *  Output type is then a resized tmp type.
     */
 
-	int elements = 2;
-	int array_of_blocklengths[] = {1, 1};
-	MPI_Datatype array_of_types[] = {MPI_INT, MPI_INT};
-	MPI_Aint array_of_displacements[] = { offsetof(NNvec_t, apos), offsetof(NNvec_t, bpos)};
+	int elements = 3;
+	int array_of_blocklengths[] = {1, 1, 1};
+	MPI_Datatype array_of_types[] = {MPI_INT, MPI_INT, MPI_INT};
+	MPI_Aint array_of_displacements[] = { offsetof(NNvec_t, apos), offsetof(NNvec_t, bpos), offsetof(NNvec_t, FM_type)};
 	MPI_Datatype tmp_type, my_mpi_struct_type;
 	MPI_Aint lb, extent;
 
@@ -384,24 +437,19 @@ int main(int argc, char *argv[]){
 
     // Declare output csv file.
     FILE *fp;
-
     char filename[32];
 
-    /*
-        Set the output name here for each individual process.
-        Will use process 0 to colate files into one file.
-    */
+    // Set the output name here for each individual process.
+    // Will use process 0 to collate files into one file.
+
     sprintf(filename, "%dx%d_spinDist_%d_%d.csv", initLatticeSize, initLatticeSize, simNumber, myrank);
 
     fp = fopen(filename, "w+");
 
 	// Update Global Variables according to process.
-	double span = 0.3 / commsize;
-	startTemp = criticalEstimate - 0.15 + myrank*span;
+	double span = rangeTemp / commsize;
+	startTemp = criticalEstimate - rangeTemp/2 + myrank*span;
 	endTemp = startTemp + span;
-
-	// Set a random seed for random numbers
-	srand(time(NULL));
 
     // Initialise the Lattice
     double lattice[initLatticeSize][initLatticeSize][3];
@@ -409,9 +457,9 @@ int main(int argc, char *argv[]){
 
     for(i=0; i<initLatticeSize; i++){
         for(j=0; j<initLatticeSize; j++){
-                lattice[i][j][0] = 0;
-                lattice[i][j][1] = 0;
-                lattice[i][j][2] = 1;
+                lattice[i][j][0] = 0.0;
+                lattice[i][j][1] = 0.0;
+                lattice[i][j][2] = uB_moment;
         }
     }
 
@@ -440,7 +488,7 @@ int main(int argc, char *argv[]){
                 fprintf(fp, ", %f", sampleMags[i]);
             }
             fprintf(fp, "\n");
-            t *= intervalTemp;
+            t += intervalTemp;
             //simSteps = updateSimStep(t, scale);
     }
     fclose(fp);
@@ -448,20 +496,7 @@ int main(int argc, char *argv[]){
     MPI_Barrier(MPI_COMM_WORLD);
 
     if(myrank==0){
-        printf("Time: %f\n", MPI_Wtime() - start);
-        /*
-        FILE *output_fp;
-        char fileout[32];
-        sprintf(fileout, "%dx%d_spinDist_%d.csv", initLatticeSize, initLatticeSize, simNumber);
-
-        output_fp = fopen(filename, "w+");
-
-        char buff[1024];
-        for(i=0; i<commsize; i++){
-
-        }
-
-        */
+        printf("Execution Time: %f\n", MPI_Wtime() - start);
     }
     MPI_Finalize();
 
