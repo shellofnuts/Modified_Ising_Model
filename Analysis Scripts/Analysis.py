@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from scipy.stats import moment
+import matplotlib.pyplot as plt
 
 import sys
 
@@ -33,25 +34,30 @@ globalSystemAverage = pd.DataFrame()
 systemAverages = pd.DataFrame()
 systemSusc = pd.DataFrame()
 systemBinder = pd.DataFrame()
+systemSTD = pd.DataFrame()
 
 for j in latticesizes:
 	for i in range(inputfiles):
-		inputTable = pd.read_csv(fileroute+'{}x{}_Data/{}x{}_spinDist_{}.csv'.format(j,j,j,j,i+1), sep='|', header=None, names='A')
+		inputTable = pd.read_csv(fileroute+'{}x{}_spinDistTest_{}.csv'.format(j,j,i+1), sep='|', header=0, names=['A'])
 		inputTable = inputTable.A.str.split(',', expand=True)
 		inputTable = inputTable.fillna(value=np.nan)
 		inputTable = inputTable.astype('float')
 		inputTable.set_index(0, inplace=True)
+		inputTable = inputTable.abs()
 		systemAverages['System {}'.format(i+1)] = inputTable.mean(axis=1, skipna=True)
+		systemSTD['System {}'.format(i+1)] = inputTable.std(axis=1, skipna=True)
 		systemSusc['System {}'.format(i+1)] = inputTable.var(axis = 1, skipna=True) / inputTable.index
 		systemBinder['System {}'.format(i+1)] = inputTable.apply(lambda x: moment(x, moment=2, nan_policy='omit'), axis=1) / inputTable.mean(axis=1, skipna=True)**2
 	
 	globalSystemAverage['{}x{} Average Magnetic Moment'.format(j,j)] = systemAverages.mean(axis=1, skipna=True)
 	globalSystemAverage['{}x{} Average Susc'.format(j,j)] = systemSusc.mean(axis=1, skipna=True)
 	globalSystemAverage['{}x{} Average U2'.format(j,j)] = systemBinder.mean(axis=1, skipna=True)
+	globalSystemAverage['{}x{} Magnetic Moment std'.format(j,j)] = systemSTD.mean(axis=1, skipna=True)
 	
 	systemAverages = systemAverages.iloc[0:0]
 	systemBinder = systemBinder.iloc[0:0]
 	systemSusc = systemSusc.iloc[0:0]
+	systemSTD = systemSTD.iloc[0:0]
 
 globalSystemAverage.rename_axis(index="Temperature", inplace=True)
 globalSystemAverage.to_csv(outputfile+'.csv', sep=',')
