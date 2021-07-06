@@ -29,6 +29,19 @@ typedef struct {
 *   Used in readFile(), alterLattice(), Warmup() & Metropolis().
 */
 
+typedef struct {
+    char systemName[255];
+    int systemVecSets;
+    int systemNN;
+}   INPUTinfo_t;
+
+/*
+ *  Stores the information on the number of basis vector sets,
+ *  the numbe rof nearest neighbours and the system name for later
+ *  confirmation of settings.
+*/
+
+
 /* Global Variable Declaration */
 
 double anisotropyExchange = 0.;         // Default values for magnetic anisotropy.
@@ -38,7 +51,7 @@ int initLatticeSize;                    // No default value, must specify in CMD
 
 int initWarmupSteps = 500;
 int maxSimSteps = 1000;
-int minSimSteps = 300;
+int minSimSteps = 300;                  // Temporarily depreciated.
 
 double criticalEstimate = 101.0;        // Estimate for Tc. Centres the temperature range search.
 
@@ -50,13 +63,14 @@ double start;
 
 double rangeTemp = 200.0;
 
-int simNumber = 0;
+int simNumber = 0;                      // Number used in the output file name when ensemble averaging is being done.
 int nearestNeighbours = 4;
+int basisSets = 1;
 
 /* Constants */
 
 const double boltzmann = 8.6173E-5; 	// Boltzmann Constant in eV
-const double J_bond = 0.86E-3; 			// J interaction energy in eV
+const double J_bond = 1.0E-3; 			// J interaction energy in eV
 const double uB_moment = 3.0;			// Intrinsic Lattice Moment
 
 /* Function Declaration */
@@ -67,23 +81,83 @@ double getRandom();
 double Hamiltonian( double *p0, double neighbours[nearestNeighbours][3], int FM_type[nearestNeighbours]);
 double acceptanceRatio(double energy, double T);
 int acceptChange(double *p0, double *p0_new, double neighbours[nearestNeighbours][3], int FM_type[nearestNeighbours], double Tk);
-int alterLattice(double lattice[initLatticeSize][initLatticeSize][3], double T, NNvec_t set_of_NN[nearestNeighbours]);
-int warmup(double lattice[initLatticeSize][initLatticeSize][3], int maxSteps, double T, NNvec_t set_of_NN[nearestNeighbours]);
-double magneticMoment(double lattice[initLatticeSize][initLatticeSize][3]);
-int Metropolis(double lattice[initLatticeSize][initLatticeSize][3], int testSteps, double T, double *magSamples, NNvec_t set_of_NN[nearestNeighbours]);
+int alterLattice(double lattice[basisSets][initLatticeSize][initLatticeSize][3], double T, NNvec_t set_of_NN[basisSets][nearestNeighbours]);
+int warmup(double lattice[basisSets][initLatticeSize][initLatticeSize][3], int maxSteps, double T, NNvec_t set_of_NN[basisSets][nearestNeighbours]);
+double magneticMoment(double lattice[basisSets][initLatticeSize][initLatticeSize][3]);
+int Metropolis(double lattice[basisSets][initLatticeSize][initLatticeSize][3], int testSteps, double T, double *magSamples, NNvec_t set_of_NN[basisSets][nearestNeighbours]);
 int updateSimStep(double T, double scale);
-int readFile(FILE *input_file, NNvec_t vectors[nearestNeighbours]);
+int readFile(FILE *input_file, INPUTinfo_t *infoSet, NNvec_t **vectors);
 
 /* Function Description */
 
-int readFile(FILE *input_file, NNvec_t vectors[nearestNeighbours]){
+int readFile(FILE *input_file, INPUTinfo_t *infoSet, NNvec_t **vectors){
     // Reads INPUTVEC file.
     // Extracts the nearest neighbour directions and the magnetic
     // interaction type of each NN interaction.
+    int i, j;
 
-    size_t count = 0;
-    while(fscanf(input_file, "%d,%d,&d", &vectors[count].apos, &vectors[count].bpos, &vectors[count].FM_type) == 3){
-        count++;
+    char name[255];
+
+    if( fgets(name, 255, input_file) == NULL ){
+        printf("Error reading system name. Max size 255 characters.");
+        abort();
+    }
+    name[strcspn(name, "\n")] = 0;                      // Strip \n from name buffer.
+    memcpy(infoSet->systemName, name, sizeof(name));   // Copy name array into systemName array.
+
+    char buff[128];
+    char *output;
+
+    if( fgets( buff, 128, input_file) == NULL){
+        printf("Error reading system shape.\n Format must be \"no_vector_sets,no_of_NearestNeighbours\"");
+        abort();
+    }
+
+    buff[strcspn(buff, "\n")] = 0;
+    output = strtok(buff, ",");
+    if(output != 0){
+        infoSet->systemVecSets = atoi(output);
+        output = strtok(NULL,",");
+        infoSet->systemNN = atoi(output);
+    }
+
+    printf("Name: %s \nBasis: %d \nNN: %d\n\n", infoSet->systemName, infoSet->systemVecSets, infoSet->systemNN);
+
+    // Assign memory to the input pointer by changing the input pointer.
+    *vectors = (NNvec_t*)malloc(infoSet->systemVecSets * infoSet->systemNN * sizeof(NNvec_t));
+    NNvec_t *tmp_vec = *vectors;        // Create a local pointer that will fill each of the values in vectors[].
+
+    // Extract the basis number and the NN vectors.
+    // Aim to distribute them back into the 1D localNN array.
+
+    char vecNum[10]; // Buffer for vector basis line.
+
+    for(i = 0; i < infoSet->systemVecSets; i++){
+        fgets(vecNum, 10, input_file);          //  Grab vector base line, store in vecNum.
+
+        printf("Reading basis set %s \n", vecNum);
+
+        for(j = 0; j < infoSet->systemNN; j++){ //  Loop through expected num of NN.
+            if(fgets(buff, 128, input_file) == NULL ){ // Grab next NN line, check that it exists.
+                printf("Error NN shape.\n Format must be \"x,y,J_type\"");
+                abort();
+            }
+
+            buff[strcspn(buff, "\n")] = 0;      //  Remove trailing \n from string.
+            output = strtok(buff, ",");         //  Split buff by "," delim.
+            if(output != NULL){                    // Check if output is string terminator \0.
+                tmp_vec[i*infoSet->systemNN + j].apos = atoi(output);  // Assign output[0] to apos in struct.
+                output = strtok(NULL, ",");                             // Move pointer to the next element in output.
+                tmp_vec[i*infoSet->systemNN + j].bpos = atoi(output);
+                output = strtok(NULL, ",");
+                tmp_vec[i*infoSet->systemNN + j].FM_type = atoi(output);
+            }
+            else{
+                printf("Error when parsing nearest neighbour vectors.");
+                abort();
+            }
+            printf("%d, %d, %d\n", (*vectors)[i*infoSet->systemNN + j].apos, (*vectors)[i*infoSet->systemNN + j].bpos, (*vectors)[i*infoSet->systemNN + j].FM_type);
+        }
     }
 }
 
@@ -191,27 +265,28 @@ int acceptChange(double *p0, double *p0_new, double neighbours[nearestNeighbours
     }
 }
 
-int alterLattice(double lattice[initLatticeSize][initLatticeSize][3], double T, NNvec_t set_of_NN[nearestNeighbours]){
-	int i, j, k, l;
-    for(i = 0; i < initLatticeSize; i++){
-        for(j = 0; j < initLatticeSize; j++){
-            double neighbours[nearestNeighbours][3];
-            double *p0, *p0_new;
-            int *FM_type;
+int alterLattice(double lattice[basisSets][initLatticeSize][initLatticeSize][3], double T, NNvec_t set_of_NN[basisSets][nearestNeighbours]){
+	int i, j, k, l, ii;
+	for(ii = 0; ii < basisSets; ii++){
+        for(i = 0; i < initLatticeSize; i++){
+            for(j = 0; j < initLatticeSize; j++){
+                double neighbours[nearestNeighbours][3];
+                double *p0, *p0_new;
+                int *FM_type;
 
-            memset(neighbours, 0, nearestNeighbours*3*sizeof(double));
-            p0 = malloc(3*sizeof(double));
-            p0_new = malloc(3*sizeof(double));
-            FM_type = malloc(nearestNeighbours*sizeof(int));
+                memset(neighbours, 0, nearestNeighbours*3*sizeof(double));
+                p0 = malloc(3*sizeof(double));
+                p0_new = malloc(3*sizeof(double));
+                FM_type = malloc(nearestNeighbours*sizeof(int));
 
-            int A, B;
+                int A, B;
 
-            randomVec(p0_new);
+                randomVec(p0_new);
 
-            for(k = 0; k < 3; k++){
-                p0[k] = lattice[i][j][k];
-            }
-            for(l = 0; l< nearestNeighbours; l++){
+                for(k = 0; k < 3; k++){
+                    p0[k] = lattice[ii][i][j][k];
+                }
+                for(l = 0; l< nearestNeighbours; l++){
                     /*
                      *   There are four scenarios that need to be dealt with for boundary conditions:
                      *
@@ -223,39 +298,41 @@ int alterLattice(double lattice[initLatticeSize][initLatticeSize][3], double T, 
                      *  There may be a way to combine scenarios 2-4 but currently not sure how to do that.
                      *  Ideally, I would only do a quick check to see if i or j are 0 first, so that I do less if-else computations.
 
-                     *  Unpack the
+                     *  We point to the other basis set of NN interactions, modulo is implemented to wrap around.
                      */
-                A = (i == 0 && set_of_NN[l].apos < 0) ? (initLatticeSize -1) : (i + set_of_NN[l].apos) % initLatticeSize;
-                B = (j == 0 && set_of_NN[l].bpos < 0) ? (initLatticeSize -1) : (i + set_of_NN[l].bpos) % initLatticeSize;
-                for(k = 0; k < 3; k++){
-                    neighbours[l][k] = lattice[A][B][k];
+                    A = (i == 0 && set_of_NN[(ii + 1) % basisSets][l].apos < 0) ? (initLatticeSize -1) : (i + set_of_NN[(ii + 1) % basisSets][l].apos) % initLatticeSize;
+                    B = (j == 0 && set_of_NN[(ii + 1) % basisSets][l].bpos < 0) ? (initLatticeSize -1) : (i + set_of_NN[(ii + 1) % basisSets][l].bpos) % initLatticeSize;
+                    for(k = 0; k < 3; k++){
+                        neighbours[l][k] = lattice[(ii + 1) % basisSets][A][B][k];
+                    }
+
+                    FM_type[l] = set_of_NN[(ii + 1) % basisSets][l].FM_type;
+
                 }
 
-                FM_type[l] = set_of_NN[l].FM_type;
 
-            }
-
-            if(acceptChange(p0, p0_new, neighbours, FM_type, T) == 1){
-                for(k = 0;k < 3; k++){
-                    lattice[i][j][k] = p0_new[k];
+                if(acceptChange(p0, p0_new, neighbours, FM_type, T) == 1){
+                    for(k = 0;k < 3; k++){
+                        lattice[ii][i][j][k] = p0_new[k];
+                    }
                 }
-            }
 
-            //free(neighbours);
-            free(p0);
-            free(p0_new);
+                //free(neighbours);
+                free(p0);
+                free(p0_new);
+            }
         }
-    }
+	}
 }
 
-int warmup(double lattice[initLatticeSize][initLatticeSize][3], int maxSteps, double T, NNvec_t set_of_NN[nearestNeighbours]){
+int warmup(double lattice[basisSets][initLatticeSize][initLatticeSize][3], int maxSteps, double T, NNvec_t set_of_NN[basisSets][nearestNeighbours]){
 	int i;
     for(i = 0; i< maxSteps; i++){
         alterLattice(lattice, T, set_of_NN);
     }
 }
 
-int Metropolis(double lattice[initLatticeSize][initLatticeSize][3], int testSteps, double T, double *magSamples, NNvec_t set_of_NN[nearestNeighbours]){
+int Metropolis(double lattice[basisSets][initLatticeSize][initLatticeSize][3], int testSteps, double T, double *magSamples, NNvec_t set_of_NN[basisSets][nearestNeighbours]){
     /*
         Loops through a set of simulation steps, altering the lattice when energy allows.
         It saves the average magnetisation of the lattice to output pointer array magSamples.
@@ -269,36 +346,38 @@ int Metropolis(double lattice[initLatticeSize][initLatticeSize][3], int testStep
     }
 }
 
-double magneticMoment(double lattice[initLatticeSize][initLatticeSize][3]){
+double magneticMoment(double lattice[basisSets][initLatticeSize][initLatticeSize][3]){
     /*
         Inputs lattice array.
         Calculates the average magnetic moment.
         Returns magnitude of vector.
     */
 
-    int i, j;
+    int i, j, k;
     double avg_magVec[3] = {0};
-    for(i = 0; i < initLatticeSize; i++){
+    for(i = 0; i < basisSets; i++){
         for(j = 0; j < initLatticeSize; j++){
-            avg_magVec[0] += lattice[i][j][0];
-            avg_magVec[1] += lattice[i][j][1];
-            avg_magVec[2] += lattice[i][j][2];
+            for(k = 0; k < initLatticeSize; k++){
+                avg_magVec[0] += lattice[i][j][k][0];
+                avg_magVec[1] += lattice[i][j][k][1];
+                avg_magVec[2] += lattice[i][j][k][2];
+            }
         }
     }
     for(i =0; i < 3; i++){
-        avg_magVec[i] /= (double)(initLatticeSize*initLatticeSize);
+        avg_magVec[i] /= (double)(basisSets*initLatticeSize*initLatticeSize);
     }
     return sqrt((avg_magVec[0]*avg_magVec[0])+(avg_magVec[1]*avg_magVec[1])+(avg_magVec[2]*avg_magVec[2]));
 }
 
 int main(int argc, char *argv[]){
     /*
-    The approach taken here is to multithread the temperature average section.
-    Each process will take a certain chunk of the temperature range and perform the calculations necessary.
-    This parallisation of the temperature sweep function should hopefully decrease sim times.
+     * The approach taken here is to multithread the temperature average section.
+     * Each process will take a certain chunk of the temperature range and perform the calculations necessary.
+     * This parallisation of the temperature sweep function should hopefully decrease sim times.
     */
 
-    int myn, myrank, commsize;
+    int myrank, commsize;
 
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &commsize); MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
@@ -308,10 +387,12 @@ int main(int argc, char *argv[]){
 
 	opterr = 0;
 	int c;
+
     /*
-        Implement command line arguments using getopt().
-        char options[] stores the command line letter. ":" denotes that a value after the letter is required.
+     * Implement command line arguments using getopt().
+     * char options[] stores the command line letter. ":" denotes that a value after the letter is required.
     */
+
 	char options[] = "N:U:L:i:a:e:T:s:r:";
 
 	while((c = getopt(argc, argv, options)) != -1){
@@ -380,6 +461,30 @@ int main(int argc, char *argv[]){
             abort();
         }
 	}
+
+	// Set a random seed for random numbers
+	srand(time(NULL));
+
+    // Declare SystemInfo on all procs before reading file.
+    INPUTinfo_t systemInfo;
+    NNvec_t *localNeighbourPos;
+    /*
+     * Declare a local NNpos as a pointer. Info will be stored 1D for contiguous memory then populated
+     * into a 2D array of structs after the memory has been distributed.
+     * Declare input file that holds symmetry vectors.
+     * Will be a set of 4 tuples for square, 6 for triangular etc.
+     * Currently need to declare nearestNeighbours on command line.
+     * Main process will read the file and then broadcast the data to all the rest of the process.
+    */
+
+    if(myrank==0){
+        FILE *input_fp;
+        input_fp = fopen("INPUTVECS", "r");
+        readFile(input_fp, &systemInfo, &localNeighbourPos);
+        fclose(input_fp);
+        printf("Distributing NNpos...\n \n");
+    }
+
     if(myrank==0){
         // Print to console the initialised variables for future reference.
         printf("Initialised with:\n");
@@ -390,28 +495,14 @@ int main(int argc, char *argv[]){
         printf("Exchange Anisotropy Value: %f\n", anisotropyExchange);
 		printf("Magnetic Interaction Energy: %f\n \n", J_bond);
         printf("Critical Estimate: %f\n", criticalEstimate);
-		printf("Temperature Range: %f\n", rangeTemp);
+		printf("Temperature Range: %f\n \n", rangeTemp);
     }
 
-	// Set a random seed for random numbers
-	srand(time(NULL));
+    // Halt everything until information is sorted by process 0.
+    // This can be removed after proper testing as all p>0 processes will
+    // wait at the MPI_Bcast() command.
 
-    // Declare NN before reading file.
-    NNvec_t nearestNeighbourPos[nearestNeighbours];
-
-    /*
-    Declare input file that holds symmetry vectors.
-    Will be a set of 4 tuples for square, 6 for triangular etc.
-    Currently need to declare nearestNeighbours on command line.
-    Main process will read the file and then broadcast the data to all the rest of the process.
-    */
-    if(myrank==0){
-        FILE *input_fp;
-        input_fp = fopen("INPUTVECS", "r");
-        readFile(input_fp, nearestNeighbourPos);
-        fclose(input_fp);
-        printf("Distributing NNpos...\n");
-    }
+    MPI_Barrier(MPI_COMM_WORLD);
 
     /*
      *  Set up the MPI_Datatype struct to be able to distribute the struct data to all nodes.
@@ -421,19 +512,70 @@ int main(int argc, char *argv[]){
     */
 
 	int elements = 3;
-	int array_of_blocklengths[] = {1, 1, 1};
-	MPI_Datatype array_of_types[] = {MPI_INT, MPI_INT, MPI_INT};
-	MPI_Aint array_of_displacements[] = { offsetof(NNvec_t, apos), offsetof(NNvec_t, bpos), offsetof(NNvec_t, FM_type)};
-	MPI_Datatype tmp_type, my_mpi_struct_type;
+
+	// Set up elements for distributing system info.
+	int array_of_blocklengths[] = {255, 1, 1};
+	MPI_Datatype array_of_types[] = {MPI_CHAR, MPI_INT, MPI_INT};
+	MPI_Aint array_of_displacements[] = { offsetof(INPUTinfo_t, systemName), offsetof(INPUTinfo_t, systemNN), offsetof(INPUTinfo_t, systemVecSets)};
+	MPI_Datatype tmp_type, NN_struct_type, systemInfo_struct_type;
 	MPI_Aint lb, extent;
+
 
 	MPI_Type_create_struct(elements, array_of_blocklengths, array_of_displacements, array_of_types, &tmp_type);
 	MPI_Type_get_extent(tmp_type, &lb, &extent);
-	MPI_Type_create_resized(tmp_type, lb, extent, &my_mpi_struct_type);
-	MPI_Type_commit(&my_mpi_struct_type);
+	MPI_Type_create_resized(tmp_type, lb, extent, &systemInfo_struct_type);
+	MPI_Type_commit(&systemInfo_struct_type);
+
+    if(myrank == 0){
+        printf("Before BCAST\n");
+    }
 
 	// Broadcast the data from process 0 to all other processes
-    MPI_Bcast(nearestNeighbourPos, nearestNeighbours, my_mpi_struct_type, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&systemInfo, 1, systemInfo_struct_type, 0, MPI_COMM_WORLD);
+
+    if(myrank == 0){
+        printf("Distributed stuff.\n");
+    }
+    if(myrank == 0){
+        printf("My rank: %d, Distinfo: %s, %d, %d\n", myrank, systemInfo.systemName, systemInfo.systemNN, systemInfo.systemVecSets);
+    }
+    if(myrank != 0){
+        printf("My rank: %d, Distinfo: %s, %d, %d\n", myrank, systemInfo.systemName, systemInfo.systemNN, systemInfo.systemVecSets);
+    }
+    MPI_Barrier(MPI_COMM_WORLD);
+
+	// Set up elements for distributing NN.
+	array_of_blocklengths[0] = 1;
+    array_of_displacements[0] = offsetof(NNvec_t, apos);
+    array_of_displacements[1] = offsetof(NNvec_t, bpos);
+    array_of_displacements[2] =  offsetof(NNvec_t, FM_type);
+    array_of_types[0] = MPI_INT;
+
+	MPI_Type_create_struct(elements, array_of_blocklengths, array_of_displacements, array_of_types, &tmp_type);
+	MPI_Type_get_extent(tmp_type, &lb, &extent);
+	MPI_Type_create_resized(tmp_type, lb, extent, &NN_struct_type);
+	MPI_Type_commit(&NN_struct_type);
+
+	// Prepare system for distributing NN
+	if(myrank != 0){
+        localNeighbourPos = malloc(systemInfo.systemVecSets * systemInfo.systemNN * sizeof(NNvec_t));
+	}
+
+	// Broadcast the data from process 0 to all other processes
+    MPI_Bcast(localNeighbourPos, systemInfo.systemVecSets*systemInfo.systemNN, NN_struct_type, 0, MPI_COMM_WORLD);
+
+    // Change 1D array into a 2D array for the rest of the program.
+	NNvec_t nearestNeighbourPos[systemInfo.systemVecSets][systemInfo.systemNN];
+
+    for(i = 0; i < systemInfo.systemVecSets; i++){
+        for(j = 0; j < systemInfo.systemNN; j++){
+            nearestNeighbourPos[i][j].apos = localNeighbourPos[i*systemInfo.systemNN + j].apos;
+            nearestNeighbourPos[i][j].bpos = localNeighbourPos[i*systemInfo.systemNN + j].bpos;
+            nearestNeighbourPos[i][j].FM_type = localNeighbourPos[i*systemInfo.systemNN + j].FM_type;
+        }
+    }
+
+    free(localNeighbourPos);
 
     // Declare output csv file.
     FILE *fp;
@@ -451,15 +593,34 @@ int main(int argc, char *argv[]){
 	startTemp = criticalEstimate - rangeTemp/2 + myrank*span;
 	endTemp = startTemp + span;
 
-    // Initialise the Lattice
-    double lattice[initLatticeSize][initLatticeSize][3];
-    memset(lattice, 0, initLatticeSize*initLatticeSize*sizeof(double));
+    nearestNeighbours = systemInfo.systemNN;
+    basisSets = systemInfo.systemVecSets;
 
-    for(i=0; i<initLatticeSize; i++){
+    /*
+     * Initialise the Lattice. Since we have distributed the size, we can rescale
+     * the lattice size to evenly redistribute the moments across the multiple basis
+     * lattices.
+     *
+     * This will be implemented by type cast rounding, i.e. initLatticeSize is divided by \sqrt{basisSets}
+     * and type cast as an int, where it will be rounded to the nearest integer. This will introduce some
+     * deviation when we declare a "40x40" lattice, but that loses meaning in a non-square lattice (though it holds
+     * some meaning in traingular lattices).
+     *
+     * We are able to not declare the size of the first dimension of any lattice passed to a function. This is because the
+     * first dimension decays to a pointer, i.e. any offset is governed by the other dimensions!
+    */
+
+    initLatticeSize = (int)(initLatticeSize / sqrt(systemInfo.systemVecSets));
+
+    double lattice[basisSets][initLatticeSize][initLatticeSize][3];
+    memset(lattice, 0, basisSets * initLatticeSize * initLatticeSize * sizeof(double));
+    for(i=0; i<systemInfo.systemVecSets; i++){
         for(j=0; j<initLatticeSize; j++){
-                lattice[i][j][0] = 0.0;
-                lattice[i][j][1] = 0.0;
-                lattice[i][j][2] = uB_moment;
+            for(k=0; k<initLatticeSize; k++){
+                    lattice[i][j][k][0] = 0.0;
+                    lattice[i][j][k][1] = 0.0;
+                    lattice[i][j][k][2] = uB_moment;
+            }
         }
     }
 
@@ -498,6 +659,8 @@ int main(int argc, char *argv[]){
     if(myrank==0){
         printf("Execution Time: %f\n", MPI_Wtime() - start);
     }
+
+
     MPI_Finalize();
 
 	return 0;
