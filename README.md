@@ -1,8 +1,14 @@
-# Square Lattice
+# Magnetic Modelling using Heisenberg Model
 
-The SimpleSquare.c can be compiled using:
+This code implements a monte-carlo approach to simulating magnetic moments in 2D lattices. The N=3 Heisenberg model is implemented with anisotropy factors.
+This allows us to overcome the Mermin-Wagner theorem and stimulate and tune long-range magnetic order in 2D lattices.
+The lattice symmetry can be arbitrarily defined, where the strength and interaction type (FM/AFM) can be individually defined for each direction.
+
+## Compiling
+
+The LatticeSim_OpenMPI.c can be compiled using:
 ```
-gcc foo.c -o foo -lm".
+gcc foo.c -o foo -lm
 ```
 
 The math.h library needs to be linked for successful compile.
@@ -11,16 +17,16 @@ The math.h library needs to be linked for successful compile.
 
 These
 
-- "-N" : REQUIRED: The dimension of the square lattice NxN. Default is 20.
-- "-U" : REQUIRED: The upper bound on simulation steps.
-- "-L" : DEPRECIATED: The lower bound on simulation steps.
-- "-a" : Set the Axis Anisotropy value. Default is 0.0
-- "-e" : Set the Exchange Anisotropy value. Default is 0.0
-- "-i" : Set the index for the output file. Needed for creating multiple files. Default is 0.
-- "-T" : Set the estimate for the critical temperature. This allows for more sampled steps around the high variance region. Default is 1.2.
-- "-s" : DEPRECIATED: Set Nearest Neighbours parameter. Default is 4. This should be set in the INPUTVECS file
-- "-I" : Set the interval between each temperature point.
-- "-r" : Set the temperature range of the simulation.
+- -N : REQUIRED: The dimension of the square lattice NxN. Default is 20.
+- -U : REQUIRED: The upper bound on simulation steps.
+- -L : DEPRECIATED: The lower bound on simulation steps.
+- -a : Set the Axis Anisotropy value. Default is 0.0
+- -e : Set the Exchange Anisotropy value. Default is 0.0
+- -i : Set the index for the output file. Needed for creating multiple files. Default is 0.
+- -T : Set the estimate for the critical temperature. This allows for more sampled steps around the high variance region. Default is 1.2.
+- -s : DEPRECIATED: Set Nearest Neighbours parameter. Default is 4. This should be set in the INPUTVECS file
+- -I : Set the interval between each temperature point.
+- -r : Set the temperature range of the simulation.
 
 
 
