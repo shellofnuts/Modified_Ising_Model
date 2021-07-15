@@ -96,18 +96,6 @@ It automatically formats the graphs to be outputted.
 The submit_Combined.sh is an example file for submitting the compiled job to the UCD Sonic cluster.
 It is also an example of how to write a bash script to create a large number of ensembles and then create the output/averaged script.
 
+The separate submit_PyAnalysis.sh and submit_MPI.sh are separate scripts to run the Python Analysis.py script and the LatticeSim_OpenMPI script respectively.
 
-Analysis.py
-This script extracts and averages 3 data points of interest: the average magnetisation across multiple ensemble averages, the average magnetic susceptibility, and the average U2 Binder Cumulant.
-
-File structure should have a directory with folders titiled {}x{}_Data where {} is the lattice size and contains the ensemble averages at that lattice size.
-
-Commmand Line arguments are:
--f: Root of file structure discussed above.
--n: Number of .csv files to average over.
--o: The output file name.
--i: The lattice sizes to loop over. Must be passed as a list enclosed in "". e.g: "[20, 40, 60]".
-
-
-Lattice_Analysis.ipynb
-This JupyterNotebook reads in the output CSV file and plots them on inified graphs.
+The headers of these scripts are particular to the UCD Sonic Cluster and its implementation of SLURM.
