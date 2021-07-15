@@ -40,7 +40,7 @@ systemSTD = pd.DataFrame()
 
 for j in latticesizes:
 	for i in range(inputfiles):
-		inputTable = pd.read_csv(fileroute+'{}x{}_spinDistHex_a-0.1_{}.csv'.format(j,j,i+1), sep=',', header=None, index_col=0)
+		inputTable = pd.read_csv(fileroute+'{}x{}_spinDistHex_{}_{}.csv'.format(j,j,anisVal,i+1), sep=',', header=None, index_col=0)
 		inputTable = inputTable.fillna(value=np.nan)
 		inputTable = inputTable.astype('float')
 		systemAverages['System {}'.format(i+1)] = inputTable.mean(axis=1, skipna=True)

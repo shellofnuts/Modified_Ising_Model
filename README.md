@@ -15,8 +15,6 @@ The math.h library needs to be linked for successful compile.
 
 ## Current Command Line Tags
 
-These
-
 - -N : REQUIRED: The dimension of the square lattice NxN. Default is 20.
 - -U : REQUIRED: The upper bound on simulation steps.
 - -L : DEPRECIATED: The lower bound on simulation steps.
@@ -56,10 +54,38 @@ Hexagonal Lattice
 -1,1,1
 ```
 
-## submit.sh
-The submit.sh is an example file for submitting the SimpleSquare job to the Sonic cluster.
+## Python Analysis
 
-The SquareLatticeJob.sh file is for batching multiple ensembles for later averaging.
+### Analysis.py
+
+The Analysis.py requires Pandas, Numpy & Scipy.stats.moment() to parse the .csv output files.
+It reads in the raw .csv files, finds the average magnetic moment and standard deviation at each temperature point.
+The magnetic susceptibility and U2 Binder cumulant for the lattice size is created.
+The output file is of the following format.
+
+| Temperature | {}x{} Average Magnetic Moment | {}x{} Average Susc | {}x{} Average U2 | {}x{} Magnetic Moment std | Repeated for larger cell sizes |
+| ----------- | ----------------------------- | ------------------ | ---------------- | ------------------------- | ------------------------------ |
+
+{} denotes the lattice size. The lattice sizes to work over are defined using the command line arguments:
+
+- -f : Path to directory containing the input files.
+- -n : Number of .csv files to average over for each setting value.
+- -o : The output file name.
+- -i : The lattice sizes to loop over. Must be passed as a list enclosed in "". e.g: "[20, 40, 60]".
+- -a : Number denoting the file number. Can be used to express the used anisotropy value.
+
+Input file format: ```python '{}_{}_spinDist_{}_{}.csv'.format(lattice_size, lattice_size, a, n) ```
+Output file format: "-o"_"-a".csv
+
+
+### Lattice_Analysis.ipynb
+
+
+
+
+## Submitting to SLURM
+The submit_Combined.sh is an example file for submitting the compiled job to the UCD Sonic cluster.
+It is also an example of how to write a bash script to create a large number of ensembles and then create the output/averaged script.
 
 
 Analysis.py
