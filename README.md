@@ -1,30 +1,56 @@
-Square Lattice
+# Square Lattice
 
-The SimpleSquare.c can be compiled on Sonic using "gcc -o SimpleSquare SimpleSquare.c -lm".
+The SimpleSquare.c can be compiled using:
+```
+gcc foo.c -o foo -lm".
+```
+
 The math.h library needs to be linked for successful compile.
 
-Current Command Line Tags for SimpleSquare.c
+## Current Command Line Tags
 
--N : The dimension of the square lattice NxN. Default is 20.
--U : The upper bound on simulation steps.
--L : The lower bound on simulation steps.
--a : Set the Axis Anisotropy value. Default is 0.0
--e : Set the Exchange Anisotropy value. Default is 0.0
--i : Set the index for the output file. Needed creating multiple files. Default is 0.
--T : Set the estimate for the critical temperature. This allows for more sampled steps around the high variance region. Default is 1.2.
--s : Set Nearest Neighbours parameter. Default is 4.
+These
 
-
-INPUTVECS
-Input file for SimpleSquare.c. This should list the nearest neighbours in terms of primitive vector coefficients around the centre point.
-Example for square would be:
-1,0
--1,0
-0,1
-0,-1
+- "-N" : REQUIRED: The dimension of the square lattice NxN. Default is 20.
+- "-U" : REQUIRED: The upper bound on simulation steps.
+- "-L" : DEPRECIATED: The lower bound on simulation steps.
+- "-a" : Set the Axis Anisotropy value. Default is 0.0
+- "-e" : Set the Exchange Anisotropy value. Default is 0.0
+- "-i" : Set the index for the output file. Needed for creating multiple files. Default is 0.
+- "-T" : Set the estimate for the critical temperature. This allows for more sampled steps around the high variance region. Default is 1.2.
+- "-s" : DEPRECIATED: Set Nearest Neighbours parameter. Default is 4. This should be set in the INPUTVECS file
+- "-I" : Set the interval between each temperature point.
+- "-r" : Set the temperature range of the simulation.
 
 
-submit.sh
+
+## INPUTVECS
+Input file for simulation. This should list the nearest neighbours in terms of primitive vector coefficients around the centre point.
+
+The format of the file is given as:
+1. Simulation name
+2. Number of basis sets, Number of nearest neighbours
+3. Basis set number
+4. X, Y, Interaction Type
+5. Repeat 4 for all nearest neighbours
+6. Repeat 3-5 for all basis sets
+
+An exampled for a hexagonal lattice is given below:
+
+```
+Hexagonal Lattice
+2,3
+1
+0,0,1
+0,1,1
+-1,1,1
+2
+0,0,1
+0,1,1
+-1,1,1
+```
+
+## submit.sh
 The submit.sh is an example file for submitting the SimpleSquare job to the Sonic cluster.
 
 The SquareLatticeJob.sh file is for batching multiple ensembles for later averaging.

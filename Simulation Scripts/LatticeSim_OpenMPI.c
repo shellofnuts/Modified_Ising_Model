@@ -439,10 +439,14 @@ int main(int argc, char *argv[]){
             nearestNeighbours = atoi(optarg);
             break;
 
-		case 'r':
-			// Set the Temperature range of the system.
-			rangeTemp = atof(optarg);
-			break;
+	case 'r':
+		// Set the Temperature range of the system.
+		rangeTemp = atof(optarg);
+		break;
+
+	case 'I':
+            intervalTemp = atof(optarg);
+            break;
 
         case '?':
             // Exception handling
