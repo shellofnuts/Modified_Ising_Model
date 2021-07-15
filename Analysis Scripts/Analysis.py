@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 from scipy.stats import moment
-import matplotlib.pyplot as plt
 
 import sys
 
@@ -15,6 +14,8 @@ inputfiles = 10 # Number of files to average over
 outputfile = ""
 latticesizes = []
 
+anisVal = 0
+
 if "-f" in opts:
 	fileroute = args[np.where(opts=="-f")[0][0]]
 if "-n" in opts:
@@ -23,7 +24,8 @@ if "-o" in opts:
 	outputfile = args[np.where(opts=="-o")[0][0]]
 if "-i" in opts:
 	latticesizes = map(int, args[np.where(opts=="-i")[0][0]].strip('[]').split(','))
-	
+if "-a" in opts:
+	anisVal = float(args[np.where(opts=="-a")[0][0]])
 #else:
 #    raise SystemExit(f"Usage: {sys.argv[0]} (-f | -n | -o) <arguments>...")
 
@@ -38,12 +40,9 @@ systemSTD = pd.DataFrame()
 
 for j in latticesizes:
 	for i in range(inputfiles):
-		inputTable = pd.read_csv(fileroute+'{}x{}_spinDistTest_{}.csv'.format(j,j,i+1), sep='|', header=0, names=['A'])
-		inputTable = inputTable.A.str.split(',', expand=True)
+		inputTable = pd.read_csv(fileroute+'{}x{}_spinDistHex_a-0.1_{}.csv'.format(j,j,i+1), sep=',', header=None, index_col=0)
 		inputTable = inputTable.fillna(value=np.nan)
 		inputTable = inputTable.astype('float')
-		inputTable.set_index(0, inplace=True)
-		inputTable = inputTable.abs()
 		systemAverages['System {}'.format(i+1)] = inputTable.mean(axis=1, skipna=True)
 		systemSTD['System {}'.format(i+1)] = inputTable.std(axis=1, skipna=True)
 		systemSusc['System {}'.format(i+1)] = inputTable.var(axis = 1, skipna=True) / inputTable.index
@@ -60,4 +59,4 @@ for j in latticesizes:
 	systemSTD = systemSTD.iloc[0:0]
 
 globalSystemAverage.rename_axis(index="Temperature", inplace=True)
-globalSystemAverage.to_csv(outputfile+'.csv', sep=',')
+globalSystemAverage.to_csv('{}_{}.csv'.format(outputfile, anisVal), sep=',')
