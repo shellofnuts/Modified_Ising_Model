@@ -80,10 +80,19 @@ Output file format: "-o"_"-a".csv
 
 ### Lattice_Analysis.ipynb
 
+This Jupyter Notebook reads in the output .csv file, unifies the different lattices sizes onto three different graphs.
 
+![Magnetic Transition Curve](/Results/MagneticCurve.png)
+
+![Magnetic Susceptibility](/Results/MagneticSusceptibility.png)
+
+![U2 Binder Cumulant](/Results/MagneticBinderCumulant.png)
+
+It automatically formats the graphs to be outputted.
 
 
 ## Submitting to SLURM
+
 The submit_Combined.sh is an example file for submitting the compiled job to the UCD Sonic cluster.
 It is also an example of how to write a bash script to create a large number of ensembles and then create the output/averaged script.
 
