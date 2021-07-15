@@ -21,6 +21,12 @@ typedef struct {
     int FM_type;
 }   NNvec_t;
 
+typedef struct {
+    char systemName[255];
+    int systemVecSets;
+    int systemNN;
+}   INPUTinfo_t;
+
 /*
 *   Struct stores information on direction of nearest neighbour
 *   and the type of bond interaction (FM: +1, AFM: -1).
@@ -387,6 +393,11 @@ int main(int argc, char *argv[]){
 
 	opterr = 0;
 	int c;
+    /*
+        Implement command line arguments using getopt().
+        char options[] stores the command line letter. ":" denotes that a value after the letter is required.
+    */
+	char options[] = "N:U:L:i:a:e:T:s:r:";
 
     /*
      * Implement command line arguments using getopt().
