@@ -37,7 +37,7 @@ typedef struct {
 
 /*
  *  Stores the information on the number of basis vector sets,
- *  the numbe rof nearest neighbours and the system name for later
+ *  the number of nearest neighbours and the system name for later
  *  confirmation of settings.
 */
 
@@ -113,7 +113,7 @@ int readFile(FILE *input_file, INPUTinfo_t *infoSet, NNvec_t **vectors){
         abort();
     }
 
-    buff[strcspn(buff, "\n")] = 0;
+    buff[strcspn(buff, "\n")] = 0;      // Strip the \n from the buffer
     output = strtok(buff, ",");
     if(output != 0){
         infoSet->systemVecSets = atoi(output);
@@ -224,11 +224,11 @@ double Hamiltonian( double *p0, double neighbours[nearestNeighbours][3], int FM_
 	int i;
 
     // Sum the altered dot product
-    for(i=0; i<nearestNeighbours;i++){
+    for(i=0; i<nearestNeighbours;i++){      // Sum over all neighbours and interaction type.
         energy += FM_type[i] * ((1 - anisotropyExchange)*(p0[0]*neighbours[i][0] + p0[1]*neighbours[i][1]) + p0[2]*neighbours[i][2]);
     }
 
-	energy *= -1 * J_bond;
+	energy *= -1 * J_bond;      // Scale the sum with the J energy
 
     // Add the easy axis anisotropy
     energy += -1 * anisotropyAxis * ( p0[2] * p0[2] );
@@ -266,7 +266,7 @@ int acceptChange(double *p0, double *p0_new, double neighbours[nearestNeighbours
 }
 
 int alterLattice(double lattice[basisSets][initLatticeSize][initLatticeSize][3], double T, NNvec_t set_of_NN[basisSets][nearestNeighbours]){
-	int i, j, k, l, ii;
+	int i, j, k, l, ii;     // Loop over ii lattice number, (i, j) positions in the lattice & the k-th vector component.
 	for(ii = 0; ii < basisSets; ii++){
         for(i = 0; i < initLatticeSize; i++){
             for(j = 0; j < initLatticeSize; j++){
@@ -295,10 +295,8 @@ int alterLattice(double lattice[basisSets][initLatticeSize][initLatticeSize][3],
                      *  3. B = -1 and j = 0, same issue.
                      *  4. A and B = -1 and i and j = 0, combination of 2 and 3.
                      *
-                     *  There may be a way to combine scenarios 2-4 but currently not sure how to do that.
-                     *  Ideally, I would only do a quick check to see if i or j are 0 first, so that I do less if-else computations.
-
                      *  We point to the other basis set of NN interactions, modulo is implemented to wrap around.
+                     *  When there is only one basis, this is redundant. However, useful for hexagonal symmetries.
                      */
                     A = (i == 0 && set_of_NN[(ii + 1) % basisSets][l].apos < 0) ? (initLatticeSize -1) : (i + set_of_NN[(ii + 1) % basisSets][l].apos) % initLatticeSize;
                     B = (j == 0 && set_of_NN[(ii + 1) % basisSets][l].bpos < 0) ? (initLatticeSize -1) : (i + set_of_NN[(ii + 1) % basisSets][l].bpos) % initLatticeSize;
@@ -316,10 +314,11 @@ int alterLattice(double lattice[basisSets][initLatticeSize][initLatticeSize][3],
                         lattice[ii][i][j][k] = p0_new[k];
                     }
                 }
-
-                //free(neighbours);
+                // Free dynamic memory.
+                // No need to free nearest neighbours as it is not dynamically allocated (w/ malloc or calloc).
                 free(p0);
                 free(p0_new);
+                free(FM_type);
             }
         }
 	}
@@ -367,6 +366,7 @@ double magneticMoment(double lattice[basisSets][initLatticeSize][initLatticeSize
     for(i =0; i < 3; i++){
         avg_magVec[i] /= (double)(basisSets*initLatticeSize*initLatticeSize);
     }
+    //  Return the magnitude of the magnetic moment. This is equivalent to the RMS value.
     return sqrt((avg_magVec[0]*avg_magVec[0])+(avg_magVec[1]*avg_magVec[1])+(avg_magVec[2]*avg_magVec[2]));
 }
 
@@ -468,6 +468,7 @@ int main(int argc, char *argv[]){
     // Declare SystemInfo on all procs before reading file.
     INPUTinfo_t systemInfo;
     NNvec_t *localNeighbourPos;
+
     /*
      * Declare a local NNpos as a pointer. Info will be stored 1D for contiguous memory then populated
      * into a 2D array of structs after the memory has been distributed.
@@ -533,15 +534,9 @@ int main(int argc, char *argv[]){
 	// Broadcast the data from process 0 to all other processes
     MPI_Bcast(&systemInfo, 1, systemInfo_struct_type, 0, MPI_COMM_WORLD);
 
-    if(myrank == 0){
-        printf("Distributed stuff.\n");
-    }
-    if(myrank == 0){
-        printf("My rank: %d, Distinfo: %s, %d, %d\n", myrank, systemInfo.systemName, systemInfo.systemNN, systemInfo.systemVecSets);
-    }
-    if(myrank != 0){
-        printf("My rank: %d, Distinfo: %s, %d, %d\n", myrank, systemInfo.systemName, systemInfo.systemNN, systemInfo.systemVecSets);
-    }
+    // Print to output to ens
+    printf("My rank: %d \nDistribution Info: %s, %d, %d\n\n", myrank, systemInfo.systemName, systemInfo.systemNN, systemInfo.systemVecSets);
+
     MPI_Barrier(MPI_COMM_WORLD);
 
 	// Set up elements for distributing NN.
@@ -575,6 +570,7 @@ int main(int argc, char *argv[]){
         }
     }
 
+    // Free dynamic memory.
     free(localNeighbourPos);
 
     // Declare output csv file.
@@ -604,7 +600,7 @@ int main(int argc, char *argv[]){
      * This will be implemented by type cast rounding, i.e. initLatticeSize is divided by \sqrt{basisSets}
      * and type cast as an int, where it will be rounded to the nearest integer. This will introduce some
      * deviation when we declare a "40x40" lattice, but that loses meaning in a non-square lattice (though it holds
-     * some meaning in traingular lattices).
+     * some meaning in triangular lattices).
      *
      * We are able to not declare the size of the first dimension of any lattice passed to a function. This is because the
      * first dimension decays to a pointer, i.e. any offset is governed by the other dimensions!
@@ -619,7 +615,7 @@ int main(int argc, char *argv[]){
             for(k=0; k<initLatticeSize; k++){
                     lattice[i][j][k][0] = 0.0;
                     lattice[i][j][k][1] = 0.0;
-                    lattice[i][j][k][2] = uB_moment;
+                    lattice[i][j][k][2] = uB_moment;    //  Initialise the Z-component to uB_moment.
             }
         }
     }
@@ -660,8 +656,7 @@ int main(int argc, char *argv[]){
         printf("Execution Time: %f\n", MPI_Wtime() - start);
     }
 
+    MPI_Finalize();     //  End of MPI program.
 
-    MPI_Finalize();
-
-	return 0;
+	return 0;       //  EOF
 }
