@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <time.h>
 #include <string.h>
 #include <unistd.h>
 #include "mpi.h"
@@ -51,7 +52,6 @@ int initLatticeSize;                    // No default value, must specify in CMD
 
 int initWarmupSteps = 500;
 int maxSimSteps = 1000;
-int minSimSteps = 300;                  // Temporarily depreciated.
 
 double criticalEstimate = 101.0;        // Estimate for Tc. Centres the temperature range search.
 
@@ -75,22 +75,23 @@ const double uB_moment = 3.0;			// Intrinsic Lattice Moment
 
 /* Function Declaration */
 
+int isprint(int c);
+
 double gaussianRand();
-int randomVec(double *output_vec);
+void randomVec(double *output_vec);
 double getRandom();
 double Hamiltonian( double *p0, double neighbours[nearestNeighbours][3], int FM_type[nearestNeighbours]);
 double acceptanceRatio(double energy, double T);
 int acceptChange(double *p0, double *p0_new, double neighbours[nearestNeighbours][3], int FM_type[nearestNeighbours], double Tk);
-int alterLattice(double lattice[basisSets][initLatticeSize][initLatticeSize][3], double T, NNvec_t set_of_NN[basisSets][nearestNeighbours]);
-int warmup(double lattice[basisSets][initLatticeSize][initLatticeSize][3], int maxSteps, double T, NNvec_t set_of_NN[basisSets][nearestNeighbours]);
+void alterLattice(double lattice[basisSets][initLatticeSize][initLatticeSize][3], double T, NNvec_t set_of_NN[basisSets][nearestNeighbours]);
+void warmup(double lattice[basisSets][initLatticeSize][initLatticeSize][3], int maxSteps, double T, NNvec_t set_of_NN[basisSets][nearestNeighbours]);
 double magneticMoment(double lattice[basisSets][initLatticeSize][initLatticeSize][3]);
-int Metropolis(double lattice[basisSets][initLatticeSize][initLatticeSize][3], int testSteps, double T, double *magSamples, NNvec_t set_of_NN[basisSets][nearestNeighbours]);
-int updateSimStep(double T, double scale);
-int readFile(FILE *input_file, INPUTinfo_t *infoSet, NNvec_t **vectors);
+void Metropolis(double lattice[basisSets][initLatticeSize][initLatticeSize][3], int testSteps, double T, double *magSamples, NNvec_t set_of_NN[basisSets][nearestNeighbours]);
+void readFile(FILE *input_file, INPUTinfo_t *infoSet, NNvec_t **vectors);
 
 /* Function Description */
 
-int readFile(FILE *input_file, INPUTinfo_t *infoSet, NNvec_t **vectors){
+void readFile(FILE *input_file, INPUTinfo_t *infoSet, NNvec_t **vectors){
     // Reads INPUTVEC file.
     // Extracts the nearest neighbour directions and the magnetic
     // interaction type of each NN interaction.
@@ -161,18 +162,7 @@ int readFile(FILE *input_file, INPUTinfo_t *infoSet, NNvec_t **vectors){
     }
 }
 
-int updateSimStep(double T, double scale){
-    /* Inputs T.
-       Returns the number of simsteps associated with that T.
-       This is calculated by scaling the simsteps to a x^2 centred on criticalEstimate.
-    */
-    double steps = maxSimSteps - (maxSimSteps-minSimSteps)*((T-criticalEstimate)*(T-criticalEstimate)/(scale*scale));
-    int result = (int) steps;
-    //printf("%f, %d\n", steps, result);
-    return result;
-}
-
-int randomVec(double *output_vec){
+void randomVec(double *output_vec){
     /*
         Input is a pointer to a 1D vector array.
         Creates 3 Gaussian random numbers, then normalises.
@@ -265,7 +255,7 @@ int acceptChange(double *p0, double *p0_new, double neighbours[nearestNeighbours
     }
 }
 
-int alterLattice(double lattice[basisSets][initLatticeSize][initLatticeSize][3], double T, NNvec_t set_of_NN[basisSets][nearestNeighbours]){
+void alterLattice(double lattice[basisSets][initLatticeSize][initLatticeSize][3], double T, NNvec_t set_of_NN[basisSets][nearestNeighbours]){
 	int i, j, k, l, ii;     // Loop over ii lattice number, (i, j) positions in the lattice & the k-th vector component.
 	for(ii = 0; ii < basisSets; ii++){
         for(i = 0; i < initLatticeSize; i++){
@@ -324,14 +314,14 @@ int alterLattice(double lattice[basisSets][initLatticeSize][initLatticeSize][3],
 	}
 }
 
-int warmup(double lattice[basisSets][initLatticeSize][initLatticeSize][3], int maxSteps, double T, NNvec_t set_of_NN[basisSets][nearestNeighbours]){
+void warmup(double lattice[basisSets][initLatticeSize][initLatticeSize][3], int maxSteps, double T, NNvec_t set_of_NN[basisSets][nearestNeighbours]){
 	int i;
     for(i = 0; i< maxSteps; i++){
         alterLattice(lattice, T, set_of_NN);
     }
 }
 
-int Metropolis(double lattice[basisSets][initLatticeSize][initLatticeSize][3], int testSteps, double T, double *magSamples, NNvec_t set_of_NN[basisSets][nearestNeighbours]){
+void Metropolis(double lattice[basisSets][initLatticeSize][initLatticeSize][3], int testSteps, double T, double *magSamples, NNvec_t set_of_NN[basisSets][nearestNeighbours]){
     /*
         Loops through a set of simulation steps, altering the lattice when energy allows.
         It saves the average magnetisation of the lattice to output pointer array magSamples.
@@ -393,7 +383,7 @@ int main(int argc, char *argv[]){
      * char options[] stores the command line letter. ":" denotes that a value after the letter is required.
     */
 
-	char options[] = "N:U:L:i:a:e:T:s:r:";
+	char options[] = "N:U:W:i:a:e:T:s:r:";
 
 	while((c = getopt(argc, argv, options)) != -1){
         switch (c)
@@ -406,11 +396,6 @@ int main(int argc, char *argv[]){
         case 'U':
             // Set Upper Bound
             maxSimSteps = atoi(optarg);
-            break;
-
-        case 'L':
-            // Set Lower Bound
-            minSimSteps = atoi(optarg);
             break;
 
         case 'i':
@@ -439,12 +424,17 @@ int main(int argc, char *argv[]){
             nearestNeighbours = atoi(optarg);
             break;
 
-	case 'r':
-		// Set the Temperature range of the system.
-		rangeTemp = atof(optarg);
-		break;
+        case 'W':
+            // Set the number of warmup steps.
+            initWarmupSteps = atoi(optarg);
+            break;
 
-	case 'I':
+        case 'r':
+            // Set the Temperature range of the system.
+            rangeTemp = atof(optarg);
+            break;
+
+        case 'I':
             intervalTemp = atof(optarg);
             break;
 
@@ -494,8 +484,7 @@ int main(int argc, char *argv[]){
         // Print to console the initialised variables for future reference.
         printf("Initialised with:\n");
         printf("Lattice Size = %d\n", initLatticeSize);
-        printf("Maximum Simulation Steps = %d\n", maxSimSteps);
-        printf("Minimum Simulation Steps = %d\n", minSimSteps);
+        printf("Simulation Steps = %d\n", maxSimSteps);
         printf("Axis Anisotropy Value: %f\n", anisotropyAxis);
         printf("Exchange Anisotropy Value: %f\n", anisotropyExchange);
 		printf("Magnetic Interaction Energy: %f\n \n", J_bond);
@@ -628,12 +617,7 @@ int main(int argc, char *argv[]){
     warmup(lattice, initWarmupSteps, startTemp, nearestNeighbourPos);
 
     t = startTemp;
-
-    // NOTE: Depreciating updateSimSteps func at the moment. Setting simsteps to Upper Bound (-U)
-
     int simSteps = maxSimSteps;
-    //int simSteps = minSimSteps;
-    //double scale = max((criticalEstimate - startTemp), (endTemp - criticalEstimate));
 
     MPI_Barrier(MPI_COMM_WORLD);
     if(myrank==0){
@@ -650,7 +634,6 @@ int main(int argc, char *argv[]){
             }
             fprintf(fp, "\n");
             t += intervalTemp;
-            //simSteps = updateSimStep(t, scale);
     }
     fclose(fp);
 

@@ -1,6 +1,6 @@
 # Magnetic Modelling using Heisenberg Model
 
-This code implements a Monte-Carlo Markov Chain (MCMC) approach to simulating magnetic moments in 2D lattices. The N=3 Heisenberg model is implemented with anisotropy factors. This includes the magnetic exchange anisotropy (red) and the axis anisotropy (blue).
+This code implements a Monte-Carlo Markov Chain (MCMC) approach to simulating magnetic moments in 2D lattices. The N=3 Heisenberg model is implemented with anisotropy factors. This includes the magnetic exchange anisotropy (green) and the axis anisotropy (blue).
 
 ![Heisenberg Hamiltonian](/Results/Hamiltonian.png)
 
@@ -22,23 +22,24 @@ The lattice symmetry can be arbitrarily defined, where the strength and interact
 
 ## Compiling
 
-The LatticeSim_OpenMPI.c can be compiled using:
+The LatticeSim_OpenMPI.c requires an OpenMPI installation to operate. OpenMPI is implemented over the temperature range, allowing sections to be calculated independently. This works as the system is a MCMC model and only has large correlation to the lattice step immediately before the current one. There is a tail off in the correlation as the steps between successive sampled lattices increases. 
+
+It can be compiled using:
 ```
-gcc foo.c -o foo -lm
+mpicc foo.c -o foo -lm
 ```
 
-The math.h library needs to be linked for successful compile.
+The math.h library needs to be linked for successful compilation.
 
 ## Current Command Line Tags
 
 - -N : REQUIRED: The dimension of the square lattice NxN. Default is 20.
-- -U : REQUIRED: The upper bound on simulation steps.
-- -L : DEPRECIATED: The lower bound on simulation steps.
+- -U : REQUIRED: The number of simulation steps taken at each temperature point.
+- -W : Set the number of warmup steps for the lattice. Default is 500.
 - -a : Set the Axis Anisotropy value. Default is 0.0
 - -e : Set the Exchange Anisotropy value. Default is 0.0
 - -i : Set the index for the output file. Needed for creating multiple files. Default is 0.
-- -T : Set the estimate for the critical temperature. This allows for more sampled steps around the high variance region. Default is 1.2.
-- -s : DEPRECIATED: Set Nearest Neighbours parameter. Default is 4. This should be set in the INPUTVECS file
+- -T : Centres the temperature range that is simulated over. It is wise to use this as an estimate for the critical temperature. Default is 1.2.
 - -I : Set the interval between each temperature point.
 - -r : Set the temperature range of the simulation.
 
