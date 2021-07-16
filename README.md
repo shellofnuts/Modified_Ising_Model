@@ -1,8 +1,24 @@
 # Magnetic Modelling using Heisenberg Model
 
-This code implements a monte-carlo approach to simulating magnetic moments in 2D lattices. The N=3 Heisenberg model is implemented with anisotropy factors.
-This allows us to overcome the Mermin-Wagner theorem and stimulate and tune long-range magnetic order in 2D lattices.
-The lattice symmetry can be arbitrarily defined, where the strength and interaction type (FM/AFM) can be individually defined for each direction.
+This code implements a Monte-Carlo Markov Chain (MCMC) approach to simulating magnetic moments in 2D lattices. The N=3 Heisenberg model is implemented with anisotropy factors. This includes the magnetic exchange anisotropy (red) and the axis anisotropy (blue).
+
+![Heisenberg Hamiltonian](/results/Hamiltonian.png)
+
+With an isotropic model (where all gamma factors are equal to zero), no long range order is seen at any finite temperature. Long-range order is explicitly forbidden by the Mermin-Wagner Theorem. This is due to finite thermal fluctuations allowing minute deviations from perfect alignment. Since 3D vectors are used, these deviations can infinitesmally off-axis, having only a tiny energy cost.
+
+![Mermin-Wagner](/results/Energetic_argument_for_Mermin_Wagner_fluctuations.png)
+
+However, increasing the any of the gamma factors (adding anisotropy) allows for long range order to occur.
+
+![Critical Temperature of the System](/results/CriticalTemperatures.png)
+
+A VASP calculation was run on Mn Octoamine-Phythalocyanine to find the factor gamma for the axis anisotropy.
+
+![In-plane vs. out-of-plane energy cost](/results/AxisAnisotropy.png)
+
+The lattice symmetry can be arbitrarily defined, where the strength and interaction type (FM/AFM) can be individually defined for each direction. This allows for defining more complex symmetries like a hexagonal lattice.
+
+![Trihexagonal Symmetry: Ta2S3](/results/Ta2S3.png)
 
 ## Compiling
 
